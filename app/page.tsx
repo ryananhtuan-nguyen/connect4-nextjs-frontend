@@ -1,16 +1,30 @@
 'use client';
 import { BoardItem, initialBoard } from '@/utils/constants';
 import { cn } from '@/utils/tw';
-import { useEffect, useMemo, useState } from 'react';
-import { useSocket } from '@/hook/useSocket';
+import { ChangeEvent, useEffect, useMemo, useState } from 'react';
+import { io } from 'socket.io-client';
+const socket = io('http://localhost:3001');
 
 export default function Home() {
   //connect to sv
-  const { socket } = useSocket();
 
   const [board, setBoard] = useState<BoardItem[][]>(initialBoard);
   const [currentPlayer, setCurrentPlayer] = useState<string>('');
   const [currentTurn, setCurrentTurn] = useState('');
+  const [roomId, setRoomId] = useState('');
+  const [joining, setJoining] = useState(false);
+  const [opponent, setOpponent] = useState(0);
+  const [input, setInput] = useState('');
+
+  useEffect(() => {
+    socket.on('room-created', (id: string) => {
+      setRoomId(id);
+    });
+
+    return () => {
+      socket.off('room-created');
+    };
+  }, []);
 
   const handleOnClick = (tileId: string, value: string) => {
     if (value !== '' || currentPlayer !== currentTurn) return;
@@ -23,36 +37,72 @@ export default function Home() {
       data: newBoard,
     });
   };
+
+  const createRoom = (player: string) => {
+    console.log(player);
+    socket.emit('creating-room', player);
+  };
   return (
     <main>
       <div className="flex items-center justify-center flex-col h-full w-full">
         <h1 className="text-center font-bold text-3xl">Hello World</h1>
-        <div className="flex gap-4 flex-col items-center justify-center">
-          <h2>Pick a color</h2>
-          {currentPlayer == '' ? (
-            <div className="flex flex-row gap-4">
+
+        {/* Pick turn or join room */}
+        {roomId == '' ? (
+          <div className="flex gap-6 flex-col items-center justify-center">
+            <h2>Pick one to create room</h2>
+            <div className="flex gap-8 pb-8">
               <button
-                onClick={() => {
-                  socket.emit('player-connected', 'X');
-                  setCurrentPlayer('X');
-                }}
+                className="border-2 bg-black text-white rounded-md px-2"
+                onClick={() => createRoom('X')}
               >
                 Black
               </button>
               <button
-                onClick={() => {
-                  socket.emit('player-connected', 'O');
-                  setCurrentPlayer('O');
-                }}
+                className="border-2 bg-red-500 text-white rounded-md px-5"
+                onClick={() => createRoom('O')}
               >
+                {' '}
                 Red
               </button>
             </div>
-          ) : (
-            <h2>{currentPlayer}</h2>
-          )}
-        </div>
-        <div className="h-[660px] w-[770px] border-[10px] flex border-blue-200 bg-blue-300 justify-center items-center">
+            {!joining ? (
+              <>
+                <p>OR</p>
+                <button
+                  className="border-2 border-black bg-gray-600 text-white rounded-md px-4"
+                  onClick={() => setJoining(true)}
+                >
+                  Join a Room
+                </button>
+              </>
+            ) : (
+              <div className="flex gap-4">
+                <input
+                  type="text"
+                  placeholder="Enter Room ID"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                />
+                <button
+                  onClick={() => {
+                    socket.emit('join-room', input);
+                  }}
+                >
+                  Go
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex justify-center gap-10 w-full">
+            <h2>Current room Id: {roomId}</h2>
+            <h2>Opponent: {opponent}</h2>
+          </div>
+        )}
+
+        {/* Game Board */}
+        <div className="h-[660px] w-[770px] border-[10px] flex border-blue-200 bg-blue-300 justify-center items-center mt-4 mb-4">
           {board.map((rows, idx) => (
             <div key={idx}>
               {rows.map((col) => (
