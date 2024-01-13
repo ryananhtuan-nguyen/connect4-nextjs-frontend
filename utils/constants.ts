@@ -1,7 +1,7 @@
-interface BoardItem {
+export type BoardItem = {
   id: string;
   value: string;
-}
+};
 
 const createBoardArray = (): BoardItem[][] => {
   let board: BoardItem[][] = [];
