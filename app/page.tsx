@@ -1,126 +1,128 @@
 'use client';
-import { BoardItem, initialBoard } from '@/utils/constants';
-import { cn } from '@/utils/tw';
-import { ChangeEvent, useEffect, useMemo, useState } from 'react';
-import { io } from 'socket.io-client';
-const socket = io('http://localhost:3001');
+import { cn } from '@/lib/utils';
+import { useEffect, useState } from 'react';
+import type { BoardItem } from '@/types/types';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Board } from '@/components/game-components/board';
+import { socket } from '@/hook/socket';
 
 export default function Home() {
-  //connect to sv
-
-  const [board, setBoard] = useState<BoardItem[][]>(initialBoard);
-  const [currentPlayer, setCurrentPlayer] = useState<string>('');
-  const [currentTurn, setCurrentTurn] = useState('');
-  const [roomId, setRoomId] = useState('');
+  //getting the initial board
+  const [board, setBoard] = useState<BoardItem[][]>([]);
+  //Creating/joining
+  const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
-  const [opponent, setOpponent] = useState(0);
-  const [input, setInput] = useState('');
+  //roomname
+  const [roomId, setRoomId] = useState('');
+  //player
+  const [currentPlayer, setCurrentPlayer] = useState('');
+  //gamestate
+  const [gameStarted, setGameStarted] = useState(false);
 
+  //Entering room
+  const enterRoom = () => {
+    socket.emit('creating-room', { roomId });
+    setCreating(false);
+  };
+  //Joining room
+  const joinRoom = () => {
+    socket.emit('request-board', { roomId });
+    setJoining(false);
+  };
+
+  //Effect
   useEffect(() => {
-    socket.on('room-created', (id: string) => {
-      setRoomId(id);
+    let initBoard: BoardItem[][];
+    let roomName: string;
+    //initial room
+    socket.on('room-created', (roomId: string) => {
+      roomName = roomId;
+      setRoomId(roomId);
+    });
+    //initial board
+    socket.on('init-board', (data: { newBoard: BoardItem[][] }) => {
+      console.log('Initial board');
+      initBoard = data.newBoard;
+      setCurrentPlayer('X');
+      setBoard(data.newBoard);
+    });
+
+    //sending current board
+    socket.on('new-player-joined', () => {
+      console.log('Someone joined our room');
+      console.log('CURRENT BOARD', initBoard);
+      console.log('CURRENT ROOM', roomName);
+      socket.emit('current-board', { board: initBoard, roomId: roomName });
+    });
+
+    //receiving current board
+    socket.on('your-board', ({ board }: { board: BoardItem[][] }) => {
+      console.log('Board Received');
+      setCurrentPlayer('O');
+      setBoard(board);
     });
 
     return () => {
-      socket.off('room-created');
+      socket.off('init-board');
+      socket.off('new-player-joined');
+      socket.off('your-board');
     };
   }, []);
 
-  const handleOnClick = (tileId: string, value: string) => {
-    if (value !== '' || currentPlayer !== currentTurn) return;
-    const [rowId, colId] = tileId.split(' ').map(Number);
-    let newBoard: BoardItem[][] = [...board];
-    newBoard[rowId][colId].value = currentPlayer;
-    setBoard(newBoard);
-    socket.emit('finish-turn', {
-      currentPlayer: currentPlayer,
-      data: newBoard,
-    });
-  };
-
-  const createRoom = (player: string) => {
-    console.log(player);
-    socket.emit('creating-room', player);
-  };
   return (
     <main>
       <div className="flex items-center justify-center flex-col h-full w-full">
-        <h1 className="text-center font-bold text-3xl">Hello World</h1>
-
-        {/* Pick turn or join room */}
-        {roomId == '' ? (
-          <div className="flex gap-6 flex-col items-center justify-center">
-            <h2>Pick one to create room</h2>
-            <div className="flex gap-8 pb-8">
-              <button
-                className="border-2 bg-black text-white rounded-md px-2"
-                onClick={() => createRoom('X')}
-              >
-                Black
-              </button>
-              <button
-                className="border-2 bg-red-500 text-white rounded-md px-5"
-                onClick={() => createRoom('O')}
-              >
-                {' '}
-                Red
-              </button>
-            </div>
-            {!joining ? (
-              <>
-                <p>OR</p>
-                <button
-                  className="border-2 border-black bg-gray-600 text-white rounded-md px-4"
-                  onClick={() => setJoining(true)}
-                >
-                  Join a Room
-                </button>
-              </>
-            ) : (
-              <div className="flex gap-4">
-                <input
-                  type="text"
-                  placeholder="Enter Room ID"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                />
-                <button
-                  onClick={() => {
-                    socket.emit('join-room', input);
-                  }}
-                >
-                  Go
-                </button>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="flex justify-center gap-10 w-full">
-            <h2>Current room Id: {roomId}</h2>
-            <h2>Opponent: {opponent}</h2>
+        <h1 className="text-center font-bold text-3xl pt-4">Hello World</h1>
+        {!creating && !joining && board.length == 0 && (
+          <div className="flex items-center justify-center gap-4 pt-4">
+            <Button onClick={() => setCreating(true)}>Create room</Button>
+            <span
+              className={buttonVariants({
+                variant: 'ghost',
+                className: 'bg-transparent',
+              })}
+            >
+              OR
+            </span>
+            <Button onClick={() => setJoining(true)}>Join a room</Button>
           </div>
         )}
-
+        {(creating || joining) && (
+          <div className="flex flex-col justify-center items-center gap-2">
+            <p>Room name to {creating ? 'create' : 'join'}:</p>
+            {creating ? (
+              <Input
+                value={roomId}
+                placeholder="Enter a name / id"
+                onChange={(e) => setRoomId(e.target.value)}
+              />
+            ) : null}
+            {joining ? (
+              <Input
+                value={roomId}
+                placeholder="Enter a name / id"
+                onChange={(e) => setRoomId(e.target.value)}
+              />
+            ) : null}
+            <Button
+              onClick={creating ? enterRoom : joining ? joinRoom : () => {}}
+            >
+              Go
+            </Button>
+          </div>
+        )}
+        {!!roomId && board.length !== 0 && (
+          <div className="flex flex-col items-center justify-center">
+            <p className="text-sm text-gray-600">Room name: {roomId}</p>
+            <p className="text-xs text-gray-600">Opponent: {0}</p>
+            <p className="text-xs text-gray-600">
+              Your color: {currentPlayer == 'X' ? 'Black' : 'Red'}
+            </p>
+          </div>
+        )}
         {/* Game Board */}
-        <div className="h-[660px] w-[770px] border-[10px] flex border-blue-200 bg-blue-300 justify-center items-center mt-4 mb-4">
-          {board.map((rows, idx) => (
-            <div key={idx}>
-              {rows.map((col) => (
-                <div
-                  key={col.id}
-                  className={cn(
-                    'h-[90px] w-[90px] bg-white rounded-full m-2 flex item-center justify-center cursor-pointer',
-                    {
-                      'bg-black': col.value == 'X',
-                      'bg-red-500': col.value == 'O',
-                    }
-                  )}
-                  onClick={() => handleOnClick(col.id, col.value)}
-                ></div>
-              ))}
-            </div>
-          ))}
-        </div>
+        {board && board.length !== 0 && <Board board={board} />}
       </div>
     </main>
   );
