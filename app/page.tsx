@@ -1,13 +1,14 @@
 'use client';
-import { cn } from '@/lib/utils';
-import { useEffect, useState } from 'react';
-import type { BoardItem } from '@/types/types';
+import { Board } from '@/components/game-components/board';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Board } from '@/components/game-components/board';
 import { socket } from '@/hook/socket';
+import type { BoardItem } from '@/types/types';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 export default function Home() {
+  const router = useRouter();
   //getting the initial board
   const [board, setBoard] = useState<BoardItem[][]>([]);
   //Creating/joining
@@ -17,8 +18,7 @@ export default function Home() {
   const [roomId, setRoomId] = useState('');
   //player
   const [currentPlayer, setCurrentPlayer] = useState('');
-  //gamestate
-  const [gameStarted, setGameStarted] = useState(false);
+  const [currentInRoom, setCurrentInRoom] = useState(0);
 
   //Entering room
   const enterRoom = () => {
@@ -34,34 +34,42 @@ export default function Home() {
   //Effect
   useEffect(() => {
     let initBoard: BoardItem[][];
-    let roomName: string;
+    let roomName: string = '';
+
     //initial room
     socket.on('room-created', (roomId: string) => {
       roomName = roomId;
       setRoomId(roomId);
     });
     //initial board
-    socket.on('init-board', (data: { newBoard: BoardItem[][] }) => {
-      console.log('Initial board');
-      initBoard = data.newBoard;
-      setCurrentPlayer('X');
-      setBoard(data.newBoard);
-    });
+    socket.on(
+      'init-board',
+      (data: { newBoard: BoardItem[][]; userInRoom: number }) => {
+        console.log('Initial board');
+        initBoard = data.newBoard;
+        setCurrentPlayer('X');
+        setCurrentInRoom(data.userInRoom);
+        setBoard(data.newBoard);
+      }
+    );
 
     //sending current board
-    socket.on('new-player-joined', () => {
-      console.log('Someone joined our room');
-      console.log('CURRENT BOARD', initBoard);
-      console.log('CURRENT ROOM', roomName);
+    socket.on('new-player-joined', ({ users }: { users: number }) => {
+      console.log('someone joined');
+      console.log(users);
+      setCurrentInRoom(users);
       socket.emit('current-board', { board: initBoard, roomId: roomName });
     });
 
     //receiving current board
-    socket.on('your-board', ({ board }: { board: BoardItem[][] }) => {
-      console.log('Board Received');
-      setCurrentPlayer('O');
-      setBoard(board);
-    });
+    socket.on(
+      'your-board',
+      ({ board, userInRoom }: { board: BoardItem[][]; userInRoom: number }) => {
+        setCurrentInRoom(userInRoom);
+        setCurrentPlayer('O');
+        setBoard(board);
+      }
+    );
 
     return () => {
       socket.off('init-board');
@@ -115,14 +123,19 @@ export default function Home() {
         {!!roomId && board.length !== 0 && (
           <div className="flex flex-col items-center justify-center">
             <p className="text-sm text-gray-600">Room name: {roomId}</p>
-            <p className="text-xs text-gray-600">Opponent: {0}</p>
+
             <p className="text-xs text-gray-600">
               Your color: {currentPlayer == 'X' ? 'Black' : 'Red'}
+            </p>
+            <p className="text-xs text-gray-600">
+              Current in room: {currentInRoom} players
             </p>
           </div>
         )}
         {/* Game Board */}
-        {board && board.length !== 0 && <Board board={board} />}
+        {board && board.length !== 0 && (
+          <Board board={board} currentPlayer={currentPlayer} roomId={roomId} />
+        )}
       </div>
     </main>
   );
